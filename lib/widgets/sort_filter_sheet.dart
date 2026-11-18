@@ -57,7 +57,9 @@ class SortFilterSheet extends StatelessWidget {
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.15),
+                    color: (isDark ? Colors.white : Colors.black).withValues(
+                      alpha: 0.15,
+                    ),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -95,13 +97,20 @@ class SortFilterSheet extends StatelessWidget {
                     TextButton.icon(
                       style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                       ),
                       onPressed: () {
                         HapticFeedback.lightImpact();
                         notesController.resetSortAndFilter();
                       },
-                      icon: Icon(Icons.refresh_rounded, size: 16, color: textSecondary),
+                      icon: Icon(
+                        Icons.refresh_rounded,
+                        size: 16,
+                        color: textSecondary,
+                      ),
                       label: Text(
                         'Restablecer',
                         style: TextStyle(
@@ -144,13 +153,17 @@ class SortFilterSheet extends StatelessWidget {
                       type.label,
                       style: TextStyle(
                         fontSize: 12.5,
-                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                         color: isSelected ? onAccent : textPrimary,
                       ),
                     ),
                     selected: isSelected,
                     selectedColor: accent,
-                    backgroundColor: themeController.surfaceElevated.withValues(alpha: 0.6),
+                    backgroundColor: themeController.surfaceElevated.withValues(
+                      alpha: 0.6,
+                    ),
                     side: BorderSide(
                       color: isSelected ? Colors.transparent : borderSubtle,
                     ),
@@ -196,13 +209,17 @@ class SortFilterSheet extends StatelessWidget {
                       criteria.label,
                       style: TextStyle(
                         fontSize: 12.5,
-                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                         color: isSelected ? onAccent : textPrimary,
                       ),
                     ),
                     selected: isSelected,
                     selectedColor: accent,
-                    backgroundColor: themeController.surfaceElevated.withValues(alpha: 0.6),
+                    backgroundColor: themeController.surfaceElevated.withValues(
+                      alpha: 0.6,
+                    ),
                     side: BorderSide(
                       color: isSelected ? Colors.transparent : borderSubtle,
                     ),
@@ -248,13 +265,17 @@ class SortFilterSheet extends StatelessWidget {
                       direction.label,
                       style: TextStyle(
                         fontSize: 12.5,
-                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
                         color: isSelected ? onAccent : textPrimary,
                       ),
                     ),
                     selected: isSelected,
                     selectedColor: accent,
-                    backgroundColor: themeController.surfaceElevated.withValues(alpha: 0.6),
+                    backgroundColor: themeController.surfaceElevated.withValues(
+                      alpha: 0.6,
+                    ),
                     side: BorderSide(
                       color: isSelected ? Colors.transparent : borderSubtle,
                     ),
@@ -282,7 +303,9 @@ class SortFilterSheet extends StatelessWidget {
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppTheme.buttonRadius),
+                      borderRadius: BorderRadius.circular(
+                        AppTheme.buttonRadius,
+                      ),
                     ),
                   ),
                   child: const Text(
