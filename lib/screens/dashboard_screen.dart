@@ -15,10 +15,9 @@ import '../widgets/note_card.dart';
 import '../widgets/voice_memo_sheet.dart';
 import '../widgets/drawing_sheet.dart';
 import '../widgets/global_search_sheet.dart';
-import '../widgets/theme_sheet.dart';
-import '../widgets/security_sheet.dart';
 import '../widgets/sort_filter_sheet.dart';
 import 'note_editor_screen.dart';
+import 'options_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -1168,7 +1167,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             ),
                           ).animate().fadeIn(duration: 400.ms).slideX(begin: -0.1, end: 0, curve: Curves.easeOutCubic),
 
-                        // Botones de acción principales (4 iconos animados en alegre cascada)
+                        // Botones de acción principales (condensados: búsqueda, vista y opciones)
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -1195,39 +1194,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                                   : 'Vista Cuadrícula',
                               visualDensity: VisualDensity.compact,
                               onPressed: controller.toggleViewMode,
-                            ).animate().fadeIn(duration: 300.ms, delay: 90.ms).scale(begin: const Offset(0.65, 0.65), curve: Curves.easeOutBack),
+                            ).animate().fadeIn(duration: 300.ms, delay: 100.ms).scale(begin: const Offset(0.65, 0.65), curve: Curves.easeOutBack),
                             IconButton(
                               icon: Icon(
-                                Icons.palette_outlined,
-                                size: 20,
-                                color: textSecondary,
-                              ),
-                              tooltip: 'Temas & Tipografía',
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () => ThemeSheet.show(context),
-                            ).animate().fadeIn(duration: 300.ms, delay: 130.ms).scale(begin: const Offset(0.65, 0.65), curve: Curves.easeOutBack),
-                            IconButton(
-                              icon: Icon(
-                                Icons.shield_outlined,
-                                size: 20,
-                                color: textSecondary,
-                              ),
-                              tooltip: 'Seguridad y copias',
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () => SecuritySheet.show(context),
-                            ).animate().fadeIn(duration: 300.ms, delay: 150.ms).scale(begin: const Offset(0.65, 0.65), curve: Curves.easeOutBack),
-                            IconButton(
-                              icon: Icon(
-                                isDark
-                                    ? Icons.light_mode_outlined
-                                    : Icons.dark_mode_outlined,
+                                Icons.settings_outlined,
                                 size: 21,
                                 color: textSecondary,
                               ),
-                              tooltip: isDark ? 'Modo Claro' : 'Modo Oscuro',
+                              tooltip: 'Opciones',
                               visualDensity: VisualDensity.compact,
-                              onPressed: themeController.toggleTheme,
-                            ).animate().fadeIn(duration: 300.ms, delay: 170.ms).scale(begin: const Offset(0.65, 0.65), curve: Curves.easeOutBack),
+                              onPressed: () => OptionsScreen.open(context),
+                            ).animate().fadeIn(duration: 300.ms, delay: 150.ms).scale(begin: const Offset(0.65, 0.65), curve: Curves.easeOutBack),
                           ],
                         ),
                       ],

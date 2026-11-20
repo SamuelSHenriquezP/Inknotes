@@ -20,6 +20,7 @@ import '../widgets/voice_memo_sheet.dart';
 import '../widgets/audio_player_widget.dart';
 import '../widgets/theme_sheet.dart';
 import '../widgets/note_history_sheet.dart';
+import '../widgets/tag_manager_sheet.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 class NoteEditorScreen extends StatefulWidget {
@@ -34,10 +35,12 @@ class NoteEditorScreen extends StatefulWidget {
 class _NoteEditorScreenState extends State<NoteEditorScreen> {
   late TextEditingController _titleCtrl;
   late HighlightedTextEditingController _contentCtrl;
+  final TextEditingController _quickTaskCtrl = TextEditingController();
   final FocusNode _contentFocus = FocusNode();
   late final EditorUndoManager _undoManager;
   Timer? _typingDebounce;
   bool _isApplyingUndoRedo = false;
+  bool _isChecklistMode = false;
 
   bool _initialized = false;
   NoteModel? _note;
@@ -55,11 +58,14 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     super.didChangeDependencies();
     if (!_initialized) {
       final controller = Provider.of<NotesController>(context, listen: false);
-      final themeController = Provider.of<ThemeController>(context, listen: false);
+      final themeController = Provider.of<ThemeController>(
+        context,
+        listen: false,
+      );
       _note = controller.notes.where((n) => n.id == widget.noteId).firstOrNull;
       if (_note != null) {
         _titleCtrl.text = _note!.title;
-        
+
         // Limpieza automática de delimitadores residuales (==, **, *) y restauración de estilos limpios
         if (_note!.content.contains('==') || _note!.content.contains('*')) {
           final cleaned = cleanMarkdownDelimiters(
@@ -77,12 +83,14 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         _contentCtrl.setHighlights(_note!.highlights);
         _contentCtrl.setIsDark(themeController.isDarkMode);
 
-        _undoManager.initialize(EditorHistoryEntry(
-          title: _titleCtrl.text,
-          content: _contentCtrl.text,
-          selection: _contentCtrl.selection,
-          highlights: List.from(_contentCtrl.highlights),
-        ));
+        _undoManager.initialize(
+          EditorHistoryEntry(
+            title: _titleCtrl.text,
+            content: _contentCtrl.text,
+            selection: _contentCtrl.selection,
+            highlights: List.from(_contentCtrl.highlights),
+          ),
+        );
       }
       _initialized = true;
     }
@@ -94,13 +102,17 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     _undoManager.dispose();
     _titleCtrl.dispose();
     _contentCtrl.dispose();
+    _quickTaskCtrl.dispose();
     _contentFocus.dispose();
     super.dispose();
   }
 
   void _onTextChanged(NotesController controller, {bool immediate = false}) {
     if (_note == null || _isApplyingUndoRedo) return;
-    final updated = _note!.copyWith(
+    final latest =
+        controller.notes.where((n) => n.id == widget.noteId).firstOrNull ??
+        _note!;
+    final updated = latest.copyWith(
       title: _titleCtrl.text,
       content: _contentCtrl.text,
       highlights: _contentCtrl.highlights,
@@ -153,14 +165,23 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     _applyHistoryEntry(next, controller);
   }
 
-  void _applyHistoryEntry(EditorHistoryEntry entry, NotesController controller) {
+  void _applyHistoryEntry(
+    EditorHistoryEntry entry,
+    NotesController controller,
+  ) {
     _isApplyingUndoRedo = true;
     _titleCtrl.text = entry.title;
     _contentCtrl.text = entry.content;
     _contentCtrl.setHighlights(entry.highlights);
 
-    final safeOffset = entry.selection.baseOffset.clamp(0, entry.content.length);
-    final safeExtent = entry.selection.extentOffset.clamp(0, entry.content.length);
+    final safeOffset = entry.selection.baseOffset.clamp(
+      0,
+      entry.content.length,
+    );
+    final safeExtent = entry.selection.extentOffset.clamp(
+      0,
+      entry.content.length,
+    );
     _contentCtrl.selection = TextSelection(
       baseOffset: safeOffset,
       extentOffset: safeExtent,
@@ -188,10 +209,144 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         title.isEmpty &&
         content.isEmpty &&
         _note!.attachments.isEmpty) {
-      controller.deleteNote(_note!.id);
+      controller.permanentlyDeleteNote(_note!.id);
     } else if (title.isNotEmpty || content.isNotEmpty) {
       controller.addHistorySnapshot(widget.noteId);
     }
+  }
+
+  void _toggleChecklistLineAt(int lineIndex, NotesController controller) {
+    final nextText = WriterTextFormatter.toggleChecklistLine(
+      _contentCtrl.text,
+      lineIndex,
+    );
+    if (nextText == _contentCtrl.text) return;
+
+    HapticFeedback.selectionClick();
+    final safeOffset = _contentCtrl.selection.isValid
+        ? _contentCtrl.selection.baseOffset.clamp(0, nextText.length)
+        : nextText.length;
+    _contentCtrl.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: safeOffset),
+    );
+    _onTextChanged(controller, immediate: true);
+    setState(() {});
+  }
+
+  void _addQuickChecklistTask(NotesController controller) {
+    final task = _quickTaskCtrl.text.trim();
+    if (task.isEmpty) return;
+
+    HapticFeedback.lightImpact();
+    final nextText = WriterTextFormatter.appendChecklistItem(
+      _contentCtrl.text,
+      task,
+    );
+    _contentCtrl.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: nextText.length),
+    );
+    _quickTaskCtrl.clear();
+    _onTextChanged(controller, immediate: true);
+    setState(() {});
+  }
+
+  Widget _buildTagsAndChecklistBar({
+    required BuildContext context,
+    required NoteModel note,
+    required NotesController notesController,
+    required ThemeController themeController,
+  }) {
+    final progress = WriterTextFormatter.checklistProgress(_contentCtrl.text);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        ActionChip(
+          avatar: Icon(
+            _isChecklistMode ? Icons.edit_note : Icons.checklist,
+            size: 18,
+          ),
+          label: Text(
+            _isChecklistMode
+                ? 'Editar texto'
+                : 'Tareas ${progress.checked}/${progress.total}',
+          ),
+          onPressed: () {
+            _contentFocus.unfocus();
+            setState(() => _isChecklistMode = !_isChecklistMode);
+          },
+        ),
+        ActionChip(
+          avatar: const Icon(Icons.tag, size: 18),
+          label: const Text('Etiquetas'),
+          onPressed: () => TagManagerSheet.show(context, noteId: note.id),
+        ),
+        for (final tag in note.tags)
+          Chip(
+            label: Text(
+              '#$tag',
+              style: TextStyle(color: themeController.textSecondary),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildInteractiveChecklistView({
+    required NotesController notesController,
+    required ThemeController themeController,
+  }) {
+    final lines = _contentCtrl.text.split('\n');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (int index = 0; index < lines.length; index++)
+          if (WriterTextFormatter.parseChecklistLine(lines[index], index)
+              case final item?)
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              value: item.isChecked,
+              onChanged: (_) => _toggleChecklistLineAt(index, notesController),
+              title: Text(
+                item.text,
+                style: TextStyle(
+                  color: themeController.textPrimary,
+                  decoration: item.isChecked
+                      ? TextDecoration.lineThrough
+                      : null,
+                ),
+              ),
+            )
+          else if (lines[index].trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                lines[index],
+                style: TextStyle(color: themeController.textPrimary),
+              ),
+            ),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _quickTaskCtrl,
+                onSubmitted: (_) => _addQuickChecklistTask(notesController),
+                decoration: const InputDecoration(hintText: 'Añadir tarea…'),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Añadir tarea',
+              icon: const Icon(Icons.add_circle_outline),
+              onPressed: () => _addQuickChecklistTask(notesController),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   void _insertPrefix(String prefix, NotesController controller) {
@@ -400,7 +555,10 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                   _contentCtrl.value = TextEditingValue(
                     text: stripped,
                     selection: TextSelection.collapsed(
-                      offset: _contentCtrl.selection.start.clamp(0, stripped.length),
+                      offset: _contentCtrl.selection.start.clamp(
+                        0,
+                        stripped.length,
+                      ),
                     ),
                   );
                   controller.updateHighlights(widget.noteId, []);
@@ -484,7 +642,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                 title: Text(
                   'Notas principales (sin carpeta)',
                   style: TextStyle(
-                    fontWeight: (_note?.folderId == null || _note!.folderId!.isEmpty)
+                    fontWeight:
+                        (_note?.folderId == null || _note!.folderId!.isEmpty)
                         ? FontWeight.w700
                         : FontWeight.w500,
                     color: theme.textPrimary,
@@ -513,11 +672,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                       color: theme.surfaceElevated,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(
-                      f.iconData,
-                      color: theme.textPrimary,
-                      size: 18,
-                    ),
+                    child: Icon(f.iconData, color: theme.textPrimary, size: 18),
                   ),
                   title: Text(
                     f.name,
@@ -561,27 +716,22 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
           borderRadius: BorderRadius.circular(AppTheme.cardRadius),
         ),
         title: Text(
-          '¿Eliminar esta nota?',
+          '¿Mover nota a la papelera?',
           style: TextStyle(
             fontWeight: FontWeight.w800,
             color: theme.textPrimary,
           ),
         ),
         content: Text(
-          'Esta acción no se puede deshacer.',
-          style: TextStyle(
-            color: theme.textSecondary,
-            fontSize: 13.5,
-          ),
+          'Podrás restaurarla desde la papelera cuando lo necesites.',
+          style: TextStyle(color: theme.textSecondary, fontSize: 13.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: Text(
               'Cancelar',
-              style: TextStyle(
-                color: theme.textSecondary,
-              ),
+              style: TextStyle(color: theme.textSecondary),
             ),
           ),
           ElevatedButton(
@@ -598,7 +748,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
               ),
             ),
             child: const Text(
-              'Eliminar',
+              'Mover a papelera',
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
@@ -647,7 +797,9 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                     height: 4,
                     margin: const EdgeInsets.only(bottom: 14),
                     decoration: BoxDecoration(
-                      color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.15),
+                      color: (isDark ? Colors.white : Colors.black).withValues(
+                        alpha: 0.15,
+                      ),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -658,10 +810,92 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.05),
+                      color: (isDark ? Colors.white : Colors.black).withValues(
+                        alpha: 0.05,
+                      ),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(Icons.history_rounded, size: 19, color: textPrimary),
+                    child: Icon(
+                      note.isPinned
+                          ? Icons.push_pin_outlined
+                          : Icons.push_pin_rounded,
+                      size: 19,
+                      color: textPrimary,
+                    ),
+                  ),
+                  title: Text(
+                    note.isPinned ? 'Desfijar nota' : 'Fijar arriba',
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
+                      color: textPrimary,
+                    ),
+                  ),
+                  subtitle: Text(
+                    note.isPinned
+                        ? 'Dejar de mostrar al inicio del listado'
+                        : 'Mantener siempre arriba en el dashboard',
+                    style: TextStyle(fontSize: 12, color: textSecondary),
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    notesController.togglePin(note.id);
+                  },
+                ),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  leading: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: (isDark ? Colors.white : Colors.black).withValues(
+                        alpha: 0.05,
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.tag_rounded,
+                      size: 19,
+                      color: textPrimary,
+                    ),
+                  ),
+                  title: Text(
+                    'Etiquetas',
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
+                      color: textPrimary,
+                    ),
+                  ),
+                  subtitle: Text(
+                    note.tags.isNotEmpty
+                        ? note.tags.map((t) => '#$t').join(' ')
+                        : 'Añadir #etiquetas para organizar',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: textSecondary),
+                  ),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    TagManagerSheet.show(context, noteId: note.id);
+                  },
+                ),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  leading: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: (isDark ? Colors.white : Colors.black).withValues(
+                        alpha: 0.05,
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.history_rounded,
+                      size: 19,
+                      color: textPrimary,
+                    ),
                   ),
                   title: Text(
                     'Historial de versiones',
@@ -686,10 +920,16 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.05),
+                      color: (isDark ? Colors.white : Colors.black).withValues(
+                        alpha: 0.05,
+                      ),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(Icons.drive_file_move_outlined, size: 19, color: textPrimary),
+                    child: Icon(
+                      Icons.drive_file_move_outlined,
+                      size: 19,
+                      color: textPrimary,
+                    ),
                   ),
                   title: Text(
                     'Mover a carpeta',
@@ -727,7 +967,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                     ),
                   ),
                   title: const Text(
-                    'Eliminar nota',
+                    'Mover a la papelera',
                     style: TextStyle(
                       fontSize: 14.5,
                       fontWeight: FontWeight.w600,
@@ -735,7 +975,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                     ),
                   ),
                   subtitle: Text(
-                    'Esta acción no se puede deshacer',
+                    'Podrás restaurarla desde la papelera',
                     style: TextStyle(fontSize: 12, color: textSecondary),
                   ),
                   onTap: () {
@@ -796,7 +1036,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
           const SingleActivator(LogicalKeyboardKey.keyZ, control: true): () {
             if (_undoManager.canUndo) _handleUndo(notesController);
           },
-          const SingleActivator(LogicalKeyboardKey.keyZ, control: true, shift: true): () {
+          const SingleActivator(
+            LogicalKeyboardKey.keyZ,
+            control: true,
+            shift: true,
+          ): () {
             if (_undoManager.canRedo) _handleRedo(notesController);
           },
           const SingleActivator(LogicalKeyboardKey.keyY, control: true): () {
@@ -806,421 +1050,500 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         child: Scaffold(
           backgroundColor: bgPrimary,
           body: SafeArea(
-          child: Column(
-            children: [
-              // Barra superior limpia, espaciosa y minimalista
-              Container(
-                height: 52,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: borderSubtle.withValues(alpha: 0.6),
-                      width: 0.8,
-                    ),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded, size: 21),
-                      tooltip: 'Volver a notas',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                    const SizedBox(width: 4),
+            child: Column(
+              children: [
+                // Barra superior limpia, espaciosa y minimalista
+                Container(
+                      height: 52,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: borderSubtle.withValues(alpha: 0.6),
+                            width: 0.8,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(
+                              Icons.arrow_back_rounded,
+                              size: 21,
+                            ),
+                            tooltip: 'Volver a notas',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                          const SizedBox(width: 4),
 
-                    // Selector de Carpeta en barra superior (Estilo chip compacto y elegante)
-                    InkWell(
-                      onTap: () => _switchFolder(notesController, isDark),
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
+                          // Selector de Carpeta en barra superior (Estilo chip compacto y elegante)
+                          InkWell(
+                            onTap: () => _switchFolder(notesController, isDark),
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: themeController.surfaceElevated,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    currentFolder?.iconData ??
+                                        Icons.description_outlined,
+                                    size: 13.5,
+                                    color: textSecondary,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 65,
+                                    ),
+                                    child: Text(
+                                      currentFolder?.name ?? 'Notas',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: textPrimary,
+                                        letterSpacing: -0.2,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    size: 14,
+                                    color: textSecondary.withValues(alpha: 0.7),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const Spacer(),
+
+                          // Selector de Diseño / Temas & Fuentes
+                          IconButton(
+                            icon: const Icon(Icons.palette_outlined, size: 20),
+                            tooltip: 'Diseño & Tipografía',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => ThemeSheet.show(context),
+                          ),
+
+                          // Pin toggle
+                          IconButton(
+                            icon: Icon(
+                              currentNote.isPinned
+                                  ? Icons.push_pin_rounded
+                                  : Icons.push_pin_outlined,
+                              size: 19,
+                              color: currentNote.isPinned
+                                  ? themeController.accentColor
+                                  : textSecondary,
+                            ),
+                            tooltip: currentNote.isPinned
+                                ? 'Desfijar'
+                                : 'Fijar arriba',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () =>
+                                notesController.togglePin(currentNote.id),
+                          ),
+
+                          // Share button
+                          IconButton(
+                            icon: const Icon(Icons.share_outlined, size: 19),
+                            tooltip: 'Compartir nota',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: _shareNote,
+                          ),
+
+                          // Más opciones (Historial, Mover a carpeta, Eliminar)
+                          IconButton(
+                            icon: const Icon(Icons.more_vert_rounded, size: 20),
+                            tooltip: 'Más opciones',
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => _showMoreNoteOptions(
+                              context,
+                              notesController,
+                              currentNote,
+                              isDark,
+                              themeController,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                    .animate()
+                    .fadeIn(duration: 250.ms)
+                    .slideY(begin: -0.1, end: 0, curve: Curves.easeOutCubic),
+
+                // Cuerpo del editor
+                Expanded(
+                      child: ListView(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 5,
+                          horizontal: 22,
+                          vertical: 12,
                         ),
-                        decoration: BoxDecoration(
-                          color: themeController.surfaceElevated,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              currentFolder?.iconData ?? Icons.description_outlined,
-                              size: 13.5,
-                              color: textSecondary,
+                        children: [
+                          // Campo de Título
+                          TextField(
+                            controller: _titleCtrl,
+                            onChanged: (_) => _onTextChanged(notesController),
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.4,
+                              color: textPrimary,
                             ),
-                            const SizedBox(width: 4),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 65),
-                              child: Text(
-                                currentFolder?.name ?? 'Notas',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: textPrimary,
-                                  letterSpacing: -0.2,
-                                ),
+                            decoration: InputDecoration(
+                              hintText: 'Título de la nota...',
+                              hintStyle: GoogleFonts.plusJakartaSans(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
+                                color: textSecondary.withValues(alpha: 0.4),
                               ),
+                              border: InputBorder.none,
                             ),
-                            const SizedBox(width: 2),
-                            Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              size: 14,
-                              color: textSecondary.withValues(alpha: 0.7),
-                            ),
+                          ),
+
+                          // Barra compacta de #etiquetas y Modo Checklist
+                          _buildTagsAndChecklistBar(
+                            context: context,
+                            note: currentNote,
+                            notesController: notesController,
+                            themeController: themeController,
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          // Adjuntos Multimedia
+                          if (currentNote.attachments.isNotEmpty) ...[
+                            ...currentNote.attachments.map((att) {
+                              if (att.type == AttachmentType.audio) {
+                                return AudioPlayerWidget(
+                                  attachment: att,
+                                  isDark: isDark,
+                                  onDelete: () => notesController
+                                      .removeAttachment(currentNote.id, att.id),
+                                );
+                              } else if (att.type == AttachmentType.drawing) {
+                                return _buildDrawingCard(
+                                  att,
+                                  currentNote,
+                                  notesController,
+                                  isDark,
+                                  bgCard,
+                                  borderSubtle,
+                                );
+                              } else if (att.type == AttachmentType.image) {
+                                return _buildImageCard(
+                                  att,
+                                  currentNote,
+                                  notesController,
+                                  isDark,
+                                  bgCard,
+                                  borderSubtle,
+                                );
+                              }
+                              return const SizedBox();
+                            }),
+                            const SizedBox(height: 12),
                           ],
-                        ),
-                      ),
-                    ),
 
-                    const Spacer(),
-
-                    // Selector de Diseño / Temas & Fuentes
-                    IconButton(
-                      icon: const Icon(Icons.palette_outlined, size: 20),
-                      tooltip: 'Diseño & Tipografía',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => ThemeSheet.show(context),
-                    ),
-
-                    // Pin toggle
-                    IconButton(
-                      icon: Icon(
-                        currentNote.isPinned
-                            ? Icons.push_pin_rounded
-                            : Icons.push_pin_outlined,
-                        size: 19,
-                        color: currentNote.isPinned
-                            ? themeController.accentColor
-                            : textSecondary,
-                      ),
-                      tooltip: currentNote.isPinned
-                          ? 'Desfijar'
-                          : 'Fijar arriba',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () =>
-                          notesController.togglePin(currentNote.id),
-                    ),
-
-                    // Share button
-                    IconButton(
-                      icon: const Icon(Icons.share_outlined, size: 19),
-                      tooltip: 'Compartir nota',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: _shareNote,
-                    ),
-
-                    // Más opciones (Historial, Mover a carpeta, Eliminar)
-                    IconButton(
-                      icon: const Icon(Icons.more_vert_rounded, size: 20),
-                      tooltip: 'Más opciones',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => _showMoreNoteOptions(
-                        context,
-                        notesController,
-                        currentNote,
-                        isDark,
-                        themeController,
-                      ),
-                    ),
-                  ],
-                ),
-              ).animate().fadeIn(duration: 250.ms).slideY(begin: -0.1, end: 0, curve: Curves.easeOutCubic),
-
-              // Cuerpo del editor
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 12,
-                  ),
-                  children: [
-                    // Campo de Título
-                    TextField(
-                      controller: _titleCtrl,
-                      onChanged: (_) => _onTextChanged(notesController),
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.4,
-                        color: textPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Título de la nota...',
-                        hintStyle: GoogleFonts.plusJakartaSans(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: textSecondary.withValues(alpha: 0.4),
-                        ),
-                        border: InputBorder.none,
-                      ),
-                    ),
-
-                    const SizedBox(height: 6),
-
-                    // Adjuntos Multimedia
-                    if (currentNote.attachments.isNotEmpty) ...[
-                      ...currentNote.attachments.map((att) {
-                        if (att.type == AttachmentType.audio) {
-                          return AudioPlayerWidget(
-                            attachment: att,
-                            isDark: isDark,
-                            onDelete: () => notesController.removeAttachment(
-                              currentNote.id,
-                              att.id,
-                            ),
-                          );
-                        } else if (att.type == AttachmentType.drawing) {
-                          return _buildDrawingCard(
-                            att,
-                            currentNote,
-                            notesController,
-                            isDark,
-                            bgCard,
-                            borderSubtle,
-                          );
-                        } else if (att.type == AttachmentType.image) {
-                          return _buildImageCard(
-                            att,
-                            currentNote,
-                            notesController,
-                            isDark,
-                            bgCard,
-                            borderSubtle,
-                          );
-                        }
-                        return const SizedBox();
-                      }),
-                      const SizedBox(height: 12),
-                    ],
-
-                    // Campo de Contenido con tipografía y tamaño dinámicos
-                    TextField(
-                      controller: _contentCtrl,
-                      focusNode: _contentFocus,
-                      onChanged: (_) => _onTextChanged(notesController),
-                      maxLines: null,
-                      style: themeController.fontFamily.textStyle(
-                        fontSize: themeController.fontSize,
-                        height: 1.65,
-                        color: textPrimary,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Comienza a escribir aquí...',
-                        hintStyle: themeController.fontFamily.textStyle(
-                          fontSize: themeController.fontSize,
-                          color: textSecondary.withValues(alpha: 0.4),
-                          height: 1.65,
-                        ),
-                        border: InputBorder.none,
-                      ),
-                    ),
-                    const SizedBox(height: 80),
-                  ],
-                ),
-              ).animate().fadeIn(duration: 300.ms, delay: 50.ms).slideY(begin: 0.05, end: 0, curve: Curves.easeOutCubic),
-
-              // Barra inferior de herramientas y métricas (Horizontal scroll para evitar desbordes con teclado)
-              Container(
-                height: 48,
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                decoration: BoxDecoration(
-                  color: bgCard,
-                  border: Border(
-                    top: BorderSide(color: borderSubtle, width: 0.8),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        physics: const BouncingScrollPhysics(),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Deshacer (Undo)
-                            ListenableBuilder(
-                              listenable: _undoManager,
-                              builder: (context, _) {
-                                return IconButton(
-                                  icon: Icon(
-                                    Icons.undo_rounded,
-                                    size: 20,
-                                    color: _undoManager.canUndo
-                                        ? textPrimary
-                                        : textSecondary.withValues(alpha: 0.3),
-                                  ),
-                                  tooltip: 'Deshacer (Ctrl+Z)',
-                                  visualDensity: VisualDensity.compact,
-                                  onPressed: _undoManager.canUndo
-                                      ? () => _handleUndo(notesController)
-                                      : null,
-                                );
+                          // Cuerpo: Modo Checklist interactivo o Editor de texto
+                          if (_isChecklistMode)
+                            _buildInteractiveChecklistView(
+                              notesController: notesController,
+                              themeController: themeController,
+                            )
+                          else
+                            TextField(
+                              controller: _contentCtrl,
+                              focusNode: _contentFocus,
+                              onChanged: (_) {
+                                _onTextChanged(notesController);
+                                setState(() {});
                               },
-                            ),
-                            // Rehacer (Redo)
-                            ListenableBuilder(
-                              listenable: _undoManager,
-                              builder: (context, _) {
-                                return IconButton(
-                                  icon: Icon(
-                                    Icons.redo_rounded,
-                                    size: 20,
-                                    color: _undoManager.canRedo
-                                        ? textPrimary
-                                        : textSecondary.withValues(alpha: 0.3),
-                                  ),
-                                  tooltip: 'Rehacer (Ctrl+Y)',
-                                  visualDensity: VisualDensity.compact,
-                                  onPressed: _undoManager.canRedo
-                                      ? () => _handleRedo(notesController)
-                                      : null,
-                                );
-                              },
-                            ),
-                            Container(
-                              height: 18,
-                              width: 1,
-                              margin: const EdgeInsets.symmetric(horizontal: 4),
-                              color: borderSubtle,
-                            ),
-
-                            // Negrita (B)
-                            IconButton(
-                              icon: const Icon(
-                                Icons.format_bold_rounded,
-                                size: 20,
-                              ),
-                              tooltip: 'Negrita',
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () => _toggleBold(notesController),
-                            ),
-                            // Cursiva (I)
-                            IconButton(
-                              icon: const Icon(
-                                Icons.format_italic_rounded,
-                                size: 20,
-                              ),
-                              tooltip: 'Cursiva',
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () => _toggleItalic(notesController),
-                            ),
-                            // Resaltador
-                            IconButton(
-                              icon: Icon(
-                                Icons.border_color_rounded,
-                                size: 19,
-                                color: Colors.amber.shade700,
-                              ),
-                              tooltip: 'Resaltar texto',
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () =>
-                                  _showHighlightColorPicker(notesController, isDark),
-                            ),
-                            // Auto-formatear párrafos
-                            IconButton(
-                              icon: Icon(
-                                Icons.auto_fix_high_rounded,
-                                size: 19,
+                              maxLines: null,
+                              style: themeController.fontFamily.textStyle(
+                                fontSize: themeController.fontSize,
+                                height: 1.65,
                                 color: textPrimary,
                               ),
-                              tooltip: 'Separar párrafos automáticamente',
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () => _autoFormatParagraphs(notesController),
-                            ),
-                            // Viñeta
-                            IconButton(
-                              icon: Icon(
-                                Icons.format_list_bulleted_rounded,
-                                size: 19,
-                                color: textSecondary,
+                              decoration: InputDecoration(
+                                hintText: 'Comienza a escribir aquí...',
+                                hintStyle: themeController.fontFamily.textStyle(
+                                  fontSize: themeController.fontSize,
+                                  color: textSecondary.withValues(alpha: 0.4),
+                                  height: 1.65,
+                                ),
+                                border: InputBorder.none,
                               ),
-                              tooltip: 'Lista con viñetas',
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () => _insertPrefix('• ', notesController),
                             ),
-                            // Lista de tareas / Casilla
-                            IconButton(
-                              icon: Icon(
-                                Icons.check_box_outlined,
-                                size: 19,
-                                color: textSecondary,
-                              ),
-                              tooltip: 'Casilla de verificación',
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () => _insertPrefix('☐ ', notesController),
-                            ),
-                            // Nota de voz
-                            IconButton(
-                              icon: Icon(
-                                Icons.mic_none_rounded,
-                                size: 20,
-                                color: textSecondary,
-                              ),
-                              tooltip: 'Grabar nota de voz',
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () =>
-                                  _recordVoiceMemo(notesController, isDark),
-                            ),
-                            // Dibujo a mano
-                            IconButton(
-                              icon: Icon(
-                                Icons.gesture_rounded,
-                                size: 20,
-                                color: textSecondary,
-                              ),
-                              tooltip: 'Añadir boceto o dibujo',
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () =>
-                                  _openDrawingSheet(notesController, isDark),
-                            ),
-                            // Imagen
-                            IconButton(
-                              icon: Icon(
-                                Icons.image_outlined,
-                                size: 20,
-                                color: textSecondary,
-                              ),
-                              tooltip: 'Insertar imagen',
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () => _pickImage(notesController),
-                            ),
-                          ],
+                          const SizedBox(height: 80),
+                        ],
+                      ),
+                    )
+                    .animate()
+                    .fadeIn(duration: 300.ms, delay: 50.ms)
+                    .slideY(begin: 0.05, end: 0, curve: Curves.easeOutCubic),
+
+                // Barra inferior de herramientas y métricas (Horizontal scroll para evitar desbordes con teclado)
+                Container(
+                      height: 48,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      decoration: BoxDecoration(
+                        color: bgCard,
+                        border: Border(
+                          top: BorderSide(color: borderSubtle, width: 0.8),
                         ),
                       ),
-                    ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Deshacer (Undo)
+                                  ListenableBuilder(
+                                    listenable: _undoManager,
+                                    builder: (context, _) {
+                                      return IconButton(
+                                        icon: Icon(
+                                          Icons.undo_rounded,
+                                          size: 20,
+                                          color: _undoManager.canUndo
+                                              ? textPrimary
+                                              : textSecondary.withValues(
+                                                  alpha: 0.3,
+                                                ),
+                                        ),
+                                        tooltip: 'Deshacer (Ctrl+Z)',
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: _undoManager.canUndo
+                                            ? () => _handleUndo(notesController)
+                                            : null,
+                                      );
+                                    },
+                                  ),
+                                  // Rehacer (Redo)
+                                  ListenableBuilder(
+                                    listenable: _undoManager,
+                                    builder: (context, _) {
+                                      return IconButton(
+                                        icon: Icon(
+                                          Icons.redo_rounded,
+                                          size: 20,
+                                          color: _undoManager.canRedo
+                                              ? textPrimary
+                                              : textSecondary.withValues(
+                                                  alpha: 0.3,
+                                                ),
+                                        ),
+                                        tooltip: 'Rehacer (Ctrl+Y)',
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: _undoManager.canRedo
+                                            ? () => _handleRedo(notesController)
+                                            : null,
+                                      );
+                                    },
+                                  ),
+                                  Container(
+                                    height: 18,
+                                    width: 1,
+                                    margin: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                    color: borderSubtle,
+                                  ),
 
-                    Container(
-                      height: 18,
-                      width: 1,
-                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                      color: borderSubtle,
-                    ),
+                                  // Negrita (B)
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.format_bold_rounded,
+                                      size: 20,
+                                    ),
+                                    tooltip: 'Negrita',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () =>
+                                        _toggleBold(notesController),
+                                  ),
+                                  // Cursiva (I)
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.format_italic_rounded,
+                                      size: 20,
+                                    ),
+                                    tooltip: 'Cursiva',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () =>
+                                        _toggleItalic(notesController),
+                                  ),
+                                  // Resaltador
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.border_color_rounded,
+                                      size: 19,
+                                      color: Colors.amber.shade700,
+                                    ),
+                                    tooltip: 'Resaltar texto',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () => _showHighlightColorPicker(
+                                      notesController,
+                                      isDark,
+                                    ),
+                                  ),
+                                  // Auto-formatear párrafos
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.auto_fix_high_rounded,
+                                      size: 19,
+                                      color: textPrimary,
+                                    ),
+                                    tooltip: 'Separar párrafos automáticamente',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () =>
+                                        _autoFormatParagraphs(notesController),
+                                  ),
+                                  // Viñeta
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.format_list_bulleted_rounded,
+                                      size: 19,
+                                      color: textSecondary,
+                                    ),
+                                    tooltip: 'Lista con viñetas',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () =>
+                                        _insertPrefix('• ', notesController),
+                                  ),
+                                  // Lista de tareas (- [ ] )
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.check_box_outlined,
+                                      size: 19,
+                                      color: textSecondary,
+                                    ),
+                                    tooltip: 'Insertar tarea (- [ ])',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () {
+                                      if (_isChecklistMode) {
+                                        setState(
+                                          () => _isChecklistMode = false,
+                                        );
+                                      }
+                                      _insertPrefix('- [ ] ', notesController);
+                                      setState(() {});
+                                    },
+                                  ),
+                                  // Alternar Modo Checklist cuando hay tareas o está activo
+                                  if (WriterTextFormatter.hasChecklist(
+                                        _contentCtrl.text,
+                                      ) ||
+                                      _isChecklistMode)
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.checklist_rounded,
+                                        size: 20,
+                                        color: _isChecklistMode
+                                            ? themeController.accentColor
+                                            : textSecondary,
+                                      ),
+                                      tooltip: _isChecklistMode
+                                          ? 'Volver a edición de texto'
+                                          : 'Modo Checklist interactivo',
+                                      visualDensity: VisualDensity.compact,
+                                      onPressed: () {
+                                        HapticFeedback.selectionClick();
+                                        setState(() {
+                                          _isChecklistMode = !_isChecklistMode;
+                                        });
+                                      },
+                                    ),
+                                  // Nota de voz
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.mic_none_rounded,
+                                      size: 20,
+                                      color: textSecondary,
+                                    ),
+                                    tooltip: 'Grabar nota de voz',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () => _recordVoiceMemo(
+                                      notesController,
+                                      isDark,
+                                    ),
+                                  ),
+                                  // Dibujo a mano
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.gesture_rounded,
+                                      size: 20,
+                                      color: textSecondary,
+                                    ),
+                                    tooltip: 'Añadir boceto o dibujo',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () => _openDrawingSheet(
+                                      notesController,
+                                      isDark,
+                                    ),
+                                  ),
+                                  // Imagen
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.image_outlined,
+                                      size: 20,
+                                      color: textSecondary,
+                                    ),
+                                    tooltip: 'Insertar imagen',
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () =>
+                                        _pickImage(notesController),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
 
-                    // Contador de palabras conciso (nunca desborda con teclado activo)
-                    Text(
-                      '$wordCount pal',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: textSecondary,
+                          Container(
+                            height: 18,
+                            width: 1,
+                            margin: const EdgeInsets.symmetric(horizontal: 8),
+                            color: borderSubtle,
+                          ),
+
+                          // Contador de palabras conciso (nunca desborda con teclado activo)
+                          Text(
+                            '$wordCount pal',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: textSecondary,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
-              ).animate().fadeIn(duration: 300.ms, delay: 100.ms).slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
-            ],
+                    )
+                    .animate()
+                    .fadeIn(duration: 300.ms, delay: 100.ms)
+                    .slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic),
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildDrawingCard(
     NoteAttachmentModel att,

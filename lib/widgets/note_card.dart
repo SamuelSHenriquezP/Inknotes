@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../models/note_model.dart';
@@ -8,6 +9,8 @@ import '../formatters/writer_text_formatter.dart';
 import '../formatters/highlighted_text_controller.dart';
 import '../controllers/theme_controller.dart';
 import '../controllers/security_controller.dart';
+import 'checklist_quick_sheet.dart';
+import 'tag_manager_sheet.dart';
 
 class NoteCard extends StatelessWidget {
   final NoteModel note;
@@ -17,6 +20,7 @@ class NoteCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onTogglePin;
   final VoidCallback onDelete;
+  final ValueChanged<int>? onToggleChecklistLine;
   final bool isSelectionMode;
   final bool isSelected;
   final VoidCallback? onLongPress;
@@ -30,6 +34,7 @@ class NoteCard extends StatelessWidget {
     required this.onTap,
     required this.onTogglePin,
     required this.onDelete,
+    this.onToggleChecklistLine,
     this.isSelectionMode = false,
     this.isSelected = false,
     this.onLongPress,
@@ -164,6 +169,271 @@ class NoteCard extends StatelessWidget {
     );
   }
 
+  Widget _buildHeaderActions({
+    required BuildContext context,
+    required Color accent,
+    required Color textSecondary,
+    required double iconSize,
+  }) {
+    if (isSelectionMode) {
+      return Icon(
+        isSelected
+            ? Icons.check_circle_rounded
+            : Icons.radio_button_unchecked_rounded,
+        size: iconSize + 5,
+        color: isSelected ? accent : textSecondary.withValues(alpha: 0.45),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: onTogglePin,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: Icon(
+              note.isPinned
+                  ? Icons.push_pin_rounded
+                  : Icons.push_pin_outlined,
+              size: iconSize,
+              color: note.isPinned
+                  ? accent
+                  : textSecondary.withValues(alpha: 0.3),
+            ),
+          ),
+        ),
+        const SizedBox(width: 2),
+        GestureDetector(
+          onTap: () => _showOptions(context),
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.all(2),
+            child: Icon(
+              Icons.more_vert_rounded,
+              size: iconSize + 1,
+              color: textSecondary.withValues(alpha: 0.55),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPreviewContent({
+    required BuildContext context,
+    required ThemeController theme,
+    required Color textPrimary,
+    required Color textSecondary,
+    required Color accent,
+    required bool hidePreview,
+    required int maxChecklistLines,
+    required int maxTextLines,
+    required double fontSize,
+  }) {
+    if (note.content.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    if (hidePreview) {
+      return Text(
+        '••••  Contenido protegido',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontStyle: FontStyle.italic,
+          color: textSecondary.withValues(alpha: 0.65),
+        ),
+      );
+    }
+
+    final checklistItems = WriterTextFormatter.parseChecklistItems(note.content);
+    if (checklistItems.isNotEmpty) {
+      final visible = checklistItems.take(maxChecklistLines).toList();
+      final remaining = checklistItems.length - visible.length;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ...visible.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 2.5),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: (!isSelectionMode && onToggleChecklistLine != null)
+                        ? () {
+                            HapticFeedback.selectionClick();
+                            onToggleChecklistLine!(item.lineIndex);
+                          }
+                        : null,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 5, top: 1, bottom: 1),
+                      child: Icon(
+                        item.isChecked
+                            ? Icons.check_box_rounded
+                            : Icons.check_box_outline_blank_rounded,
+                        size: 14,
+                        color: item.isChecked
+                            ? accent
+                            : textSecondary.withValues(alpha: 0.75),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      item.text.isNotEmpty ? item.text : 'Tarea',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: fontSize,
+                        color: item.isChecked
+                            ? textSecondary.withValues(alpha: 0.65)
+                            : textPrimary.withValues(alpha: 0.85),
+                        decoration: item.isChecked
+                            ? TextDecoration.lineThrough
+                            : TextDecoration.none,
+                        decorationColor: textSecondary,
+                        height: 1.25,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (remaining > 0)
+            Text(
+              '+$remaining más',
+              style: TextStyle(
+                fontSize: fontSize - 1,
+                fontWeight: FontWeight.w600,
+                color: textSecondary.withValues(alpha: 0.75),
+              ),
+            ),
+        ],
+      );
+    }
+
+    return Text.rich(
+      buildHighlightedTextSpan(
+        text: note.content,
+        highlights: note.highlights,
+        isDark: isDark,
+        baseStyle: TextStyle(
+          fontSize: fontSize,
+          color: textSecondary,
+          height: 1.35,
+        ),
+      ),
+      maxLines: maxTextLines,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  Widget _buildTagsAndChecklistChips({
+    required BuildContext context,
+    required ThemeController theme,
+    required Color textSecondary,
+    required Color accent,
+    required bool hidePreview,
+    required int maxTags,
+  }) {
+    final progress = !hidePreview
+        ? WriterTextFormatter.checklistProgress(note.content)
+        : (checked: 0, total: 0);
+    final hasChecklist = progress.total > 0;
+    final hasTags = note.tags.isNotEmpty;
+
+    if (!hasChecklist && !hasTags) {
+      return const SizedBox.shrink();
+    }
+
+    final visibleTags = note.tags.take(maxTags).toList();
+    final extraTags = note.tags.length - visibleTags.length;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: [
+          if (hasChecklist)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: isSelectionMode
+                  ? null
+                  : () => ChecklistQuickSheet.show(context, noteId: note.id),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.checklist_rounded,
+                      size: 11,
+                      color: accent,
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      '${progress.checked}/${progress.total}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: accent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ...visibleTags.map(
+            (tag) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: theme.surfaceElevated,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '#$tag',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: textSecondary,
+                ),
+              ),
+            ),
+          ),
+          if (extraTags > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: theme.surfaceElevated,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '+$extraTags',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: textSecondary,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // Tarjeta de Nota Normal en Cuadrícula
   Widget _buildGridCard({
     required Color bgCard,
@@ -179,6 +449,7 @@ class NoteCard extends StatelessWidget {
     required bool hasImage,
     required BuildContext context,
   }) {
+    final theme = Provider.of<ThemeController>(context, listen: false);
     return Container(
       decoration: BoxDecoration(
         color: bgCard,
@@ -206,93 +477,72 @@ class NoteCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Fila superior: Título de la nota y Pin / Selección
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            note.title.isNotEmpty ? note.title : 'Nota sin título',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w800,
-                              color: textPrimary,
-                              letterSpacing: -0.3,
-                              height: 1.25,
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Fila superior: Título de la nota y Pin / Selección
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              note.title.isNotEmpty ? note.title : 'Nota sin título',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w800,
+                                color: textPrimary,
+                                letterSpacing: -0.3,
+                                height: 1.25,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        if (isSelectionMode)
-                          Icon(
-                            isSelected
-                                ? Icons.check_circle_rounded
-                                : Icons.radio_button_unchecked_rounded,
-                            size: 19,
-                            color: isSelected
-                                ? accent
-                                : textSecondary.withValues(alpha: 0.45),
-                          )
-                        else if (note.isPinned)
-                          Icon(
-                            Icons.push_pin_rounded,
-                            size: 13.5,
-                            color: accent,
-                          )
-                        else
-                          GestureDetector(
-                            onTap: onTogglePin,
-                            child: Icon(
-                              Icons.push_pin_outlined,
-                              size: 13.5,
-                              color: textSecondary.withValues(alpha: 0.25),
-                            ),
+                          const SizedBox(width: 4),
+                          _buildHeaderActions(
+                            context: context,
+                            accent: accent,
+                            textSecondary: textSecondary,
+                            iconSize: 14,
                           ),
-                      ],
-                    ),
+                        ],
+                      ),
 
-                    // Previsualización normal o discreta del texto de la nota
-                    if (note.content.isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      if (hidePreview)
-                        Text(
-                          '••••  Contenido protegido',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
+                      // Previsualización normal, discreta o checklist
+                      if (note.content.isNotEmpty) ...[
+                        const SizedBox(height: 5),
+                        Flexible(
+                          child: _buildPreviewContent(
+                            context: context,
+                            theme: theme,
+                            textPrimary: textPrimary,
+                            textSecondary: textSecondary,
+                            accent: accent,
+                            hidePreview: hidePreview,
+                            maxChecklistLines: 2,
+                            maxTextLines: 3,
                             fontSize: 12,
-                            fontStyle: FontStyle.italic,
-                            color: textSecondary.withValues(alpha: 0.65),
                           ),
-                        )
-                      else
-                        Text.rich(
-                          buildHighlightedTextSpan(
-                            text: note.content,
-                            highlights: note.highlights,
-                            isDark: isDark,
-                            baseStyle: TextStyle(
-                              fontSize: 12,
-                              color: textSecondary,
-                              height: 1.35,
-                            ),
-                          ),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
                         ),
+                      ],
+
+                      _buildTagsAndChecklistChips(
+                        context: context,
+                        theme: theme,
+                        textSecondary: textSecondary,
+                        accent: accent,
+                        hidePreview: hidePreview,
+                        maxTags: 2,
+                      ),
                     ],
-                  ],
+                  ),
                 ),
 
                 // Fila inferior: adjuntos, palabras y fecha
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.only(top: 6),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -362,6 +612,7 @@ class NoteCard extends StatelessWidget {
     required bool hasImage,
     required BuildContext context,
   }) {
+    final theme = Provider.of<ThemeController>(context, listen: false);
     return Container(
       decoration: BoxDecoration(
         color: bgCard,
@@ -404,62 +655,37 @@ class NoteCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (isSelectionMode)
-                      Icon(
-                        isSelected
-                            ? Icons.check_circle_rounded
-                            : Icons.radio_button_unchecked_rounded,
-                        size: 20,
-                        color: isSelected
-                            ? accent
-                            : textSecondary.withValues(alpha: 0.45),
-                      )
-                    else if (note.isPinned)
-                      Icon(
-                        Icons.push_pin_rounded,
-                        size: 14,
-                        color: accent,
-                      )
-                    else
-                      GestureDetector(
-                        onTap: onTogglePin,
-                        child: Icon(
-                          Icons.push_pin_outlined,
-                          size: 14,
-                          color: textSecondary.withValues(alpha: 0.25),
-                        ),
-                      ),
+                    const SizedBox(width: 6),
+                    _buildHeaderActions(
+                      context: context,
+                      accent: accent,
+                      textSecondary: textSecondary,
+                      iconSize: 14.5,
+                    ),
                   ],
                 ),
                 if (note.content.isNotEmpty) ...[
                   const SizedBox(height: 5),
-                  if (hidePreview)
-                    Text(
-                      '••••  Contenido protegido',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontStyle: FontStyle.italic,
-                        color: textSecondary.withValues(alpha: 0.65),
-                      ),
-                    )
-                  else
-                    Text.rich(
-                      buildHighlightedTextSpan(
-                        text: note.content,
-                        highlights: note.highlights,
-                        isDark: isDark,
-                        baseStyle: TextStyle(
-                          fontSize: 12.5,
-                          color: textSecondary,
-                          height: 1.4,
-                        ),
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  _buildPreviewContent(
+                    context: context,
+                    theme: theme,
+                    textPrimary: textPrimary,
+                    textSecondary: textSecondary,
+                    accent: accent,
+                    hidePreview: hidePreview,
+                    maxChecklistLines: 3,
+                    maxTextLines: 2,
+                    fontSize: 12.5,
+                  ),
                 ],
+                _buildTagsAndChecklistChips(
+                  context: context,
+                  theme: theme,
+                  textSecondary: textSecondary,
+                  accent: accent,
+                  hidePreview: hidePreview,
+                  maxTags: 4,
+                ),
                 const SizedBox(height: 10),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -509,6 +735,7 @@ class NoteCard extends StatelessWidget {
 
   void _showOptions(BuildContext context) {
     final theme = Provider.of<ThemeController>(context, listen: false);
+    final hasChecklist = WriterTextFormatter.hasChecklist(note.content);
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -555,12 +782,58 @@ class NoteCard extends StatelessWidget {
                 },
               ),
               ListTile(
+                leading: Icon(
+                  Icons.tag_rounded,
+                  color: theme.textPrimary,
+                ),
+                title: Text(
+                  'Gestionar etiquetas',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: theme.textPrimary,
+                  ),
+                ),
+                subtitle: note.tags.isNotEmpty
+                    ? Text(
+                        note.tags.map((t) => '#$t').join(' '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.textSecondary,
+                        ),
+                      )
+                    : null,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  TagManagerSheet.show(context, noteId: note.id);
+                },
+              ),
+              if (hasChecklist)
+                ListTile(
+                  leading: Icon(
+                    Icons.checklist_rounded,
+                    color: theme.textPrimary,
+                  ),
+                  title: Text(
+                    'Checklist rápido',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: theme.textPrimary,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    ChecklistQuickSheet.show(context, noteId: note.id);
+                  },
+                ),
+              ListTile(
                 leading: const Icon(
                   Icons.delete_outline_rounded,
                   color: Colors.redAccent,
                 ),
                 title: const Text(
-                  'Eliminar nota',
+                  'Mover a la papelera',
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: Colors.redAccent,
@@ -588,14 +861,14 @@ class NoteCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppTheme.cardRadius),
         ),
         title: Text(
-          '¿Eliminar nota?',
+          '¿Mover nota a la papelera?',
           style: TextStyle(
             fontWeight: FontWeight.w800,
             color: theme.textPrimary,
           ),
         ),
         content: Text(
-          'Esta acción no se puede deshacer.',
+          'Podrás restaurarla desde la papelera cuando lo necesites.',
           style: TextStyle(
             color: theme.textSecondary,
             fontSize: 13.5,
@@ -624,7 +897,7 @@ class NoteCard extends StatelessWidget {
               ),
             ),
             child: const Text(
-              'Eliminar',
+              'Mover a papelera',
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
           ),

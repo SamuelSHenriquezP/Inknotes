@@ -9,12 +9,14 @@ class NoteModel {
   final String title;
   final String content;
   final bool isPinned;
+  final List<String> tags;
   final List<NoteAttachmentModel> attachments;
   final List<NoteHighlightModel> highlights;
   final List<NoteHistorySnapshot> history;
   final int? colorValue;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? deletedAt;
 
   const NoteModel({
     required this.id,
@@ -22,12 +24,14 @@ class NoteModel {
     required this.title,
     required this.content,
     this.isPinned = false,
+    this.tags = const [],
     this.attachments = const [],
     this.highlights = const [],
     this.history = const [],
     this.colorValue,
     required this.createdAt,
     required this.updatedAt,
+    this.deletedAt,
   });
 
   NoteModel copyWith({
@@ -37,12 +41,15 @@ class NoteModel {
     String? title,
     String? content,
     bool? isPinned,
+    List<String>? tags,
     List<NoteAttachmentModel>? attachments,
     List<NoteHighlightModel>? highlights,
     List<NoteHistorySnapshot>? history,
     int? colorValue,
     DateTime? createdAt,
     DateTime? updatedAt,
+    DateTime? deletedAt,
+    bool clearDeletedAt = false,
   }) {
     return NoteModel(
       id: id ?? this.id,
@@ -50,12 +57,14 @@ class NoteModel {
       title: title ?? this.title,
       content: content ?? this.content,
       isPinned: isPinned ?? this.isPinned,
+      tags: tags ?? this.tags,
       attachments: attachments ?? this.attachments,
       highlights: highlights ?? this.highlights,
       history: history ?? this.history,
       colorValue: colorValue ?? this.colorValue,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
     );
   }
 
@@ -66,12 +75,14 @@ class NoteModel {
       'title': title,
       'content': content,
       'isPinned': isPinned,
+      'tags': tags,
       'attachments': attachments.map((a) => a.toMap()).toList(),
       'highlights': highlights.map((h) => h.toMap()).toList(),
       'history': history.map((s) => s.toMap()).toList(),
       'colorValue': colorValue,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'deletedAt': deletedAt?.toIso8601String(),
     };
   }
 
@@ -83,6 +94,11 @@ class NoteModel {
       title: map['title'] as String? ?? '',
       content: map['content'] as String? ?? '',
       isPinned: map['isPinned'] as bool? ?? false,
+      tags: (map['tags'] as List<dynamic>?)
+              ?.map((e) => e.toString().trim())
+              .where((e) => e.isNotEmpty)
+              .toList() ??
+          const [],
       attachments: (map['attachments'] as List<dynamic>?)
               ?.map(
                 (e) => NoteAttachmentModel.fromMap(e as Map<String, dynamic>),
@@ -108,6 +124,9 @@ class NoteModel {
       updatedAt: map['updatedAt'] != null
           ? DateTime.tryParse(map['updatedAt'] as String) ?? DateTime.now()
           : DateTime.now(),
+      deletedAt: map['deletedAt'] != null
+          ? DateTime.tryParse(map['deletedAt'] as String)
+          : null,
     );
   }
 

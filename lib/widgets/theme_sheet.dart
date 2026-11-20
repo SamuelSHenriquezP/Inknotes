@@ -4,7 +4,9 @@ import '../theme/app_theme.dart';
 import '../controllers/theme_controller.dart';
 
 class ThemeSheet extends StatelessWidget {
-  const ThemeSheet({super.key});
+  final bool embedded;
+
+  const ThemeSheet({super.key, this.embedded = false});
 
   static Future<void> show(BuildContext context) {
     return showModalBottomSheet(
@@ -26,169 +28,162 @@ class ThemeSheet extends StatelessWidget {
     final borderSubtle = themeController.borderSubtle;
     final accent = themeController.accentColor;
 
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.88,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-      decoration: BoxDecoration(
-        color: bgSheet,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(AppTheme.sheetRadius),
-        ),
-        boxShadow: AppTheme.getSoftShadow(isDark),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Drag Notch
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.black12,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
+    final innerContent = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!embedded) ...[
+          // Drag Notch
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white24 : Colors.black12,
+                borderRadius: BorderRadius.circular(2),
               ),
-              const SizedBox(height: 16),
+            ),
+          ),
+          const SizedBox(height: 16),
 
-              // Título y Toggle Rápido
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // Título y Toggle Rápido
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Diseño & Apariencia',
-                        style: TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w800,
-                          color: textPrimary,
-                          letterSpacing: -0.4,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Personaliza temas, fuentes y lectura',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          color: textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  IconButton.filledTonal(
-                    onPressed: themeController.toggleTheme,
-                    icon: Icon(
-                      isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-                      size: 20,
+                  Text(
+                    'Diseño & Apariencia',
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      color: textPrimary,
+                      letterSpacing: -0.4,
                     ),
-                    tooltip: isDark ? 'Modo Claro' : 'Modo Oscuro',
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Personaliza temas, fuentes y lectura',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: textSecondary,
+                    ),
                   ),
                 ],
               ),
-
-              const SizedBox(height: 20),
-              const Divider(height: 1),
-              const SizedBox(height: 18),
-
-              // SECCIÓN: TEMAS
-              Text(
-                'PALETA DE COLOR',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: textSecondary,
-                  letterSpacing: 1.2,
+              IconButton.filledTonal(
+                onPressed: themeController.toggleTheme,
+                icon: Icon(
+                  isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                  size: 20,
                 ),
+                tooltip: isDark ? 'Modo Claro' : 'Modo Oscuro',
               ),
-              const SizedBox(height: 12),
+            ],
+          ),
 
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: AppThemePreset.values.map((preset) {
-                  final isSelected = themeController.preset == preset;
-                  final previewColor = preset.previewColor(isDark);
+          const SizedBox(height: 20),
+          const Divider(height: 1),
+          const SizedBox(height: 18),
+        ],
 
-                  return GestureDetector(
-                    onTap: () => themeController.setPreset(preset),
-                    child: Container(
-                      width: (MediaQuery.of(context).size.width - 64) / 2,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: preset.surfaceCard(isDark),
-                        borderRadius: BorderRadius.circular(AppTheme.cardRadius),
-                        border: Border.all(
-                          color: isSelected ? accent : borderSubtle,
-                          width: isSelected ? 2.2 : 1.2,
-                        ),
-                        boxShadow: isSelected
-                            ? [
-                                BoxShadow(
-                                  color: accent.withValues(alpha: 0.18),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
-                                )
-                              ]
-                            : null,
+        // SECCIÓN: TEMAS
+        Text(
+          'PALETA DE COLOR',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: textSecondary,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final cardWidth = (constraints.maxWidth - 10) / 2;
+            return Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: AppThemePreset.values.map((preset) {
+                final isSelected = themeController.preset == preset;
+                final previewColor = preset.previewColor(isDark);
+
+                return GestureDetector(
+                  onTap: () => themeController.setPreset(preset),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: cardWidth,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: preset.surfaceCard(isDark),
+                      borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+                      border: Border.all(
+                        color: isSelected ? accent : borderSubtle,
+                        width: isSelected ? 2.2 : 1.2,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Container(
-                                width: 22,
-                                height: 22,
-                                decoration: BoxDecoration(
-                                  color: previewColor,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.black12,
-                                    width: 1,
-                                  ),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: accent.withValues(alpha: 0.18),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              )
+                            ]
+                          : null,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Container(
+                              width: 22,
+                              height: 22,
+                              decoration: BoxDecoration(
+                                color: previewColor,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.black12,
+                                  width: 1,
                                 ),
                               ),
-                              if (isSelected)
-                                Icon(Icons.check_circle_rounded,
-                                    size: 18, color: accent),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            preset.label,
-                            style: TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
-                              color: preset.textPrimary(isDark),
                             ),
+                            if (isSelected)
+                              Icon(Icons.check_circle_rounded,
+                                  size: 18, color: accent),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          preset.label,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: preset.textPrimary(isDark),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            preset.description,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              color: preset.textSecondary(isDark),
-                              height: 1.3,
-                            ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          preset.description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            color: preset.textSecondary(isDark),
+                            height: 1.3,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  );
-                }).toList(),
-              ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
 
               const SizedBox(height: 24),
               const Divider(height: 1),
@@ -317,7 +312,32 @@ class ThemeSheet extends StatelessWidget {
 
               const SizedBox(height: 20),
             ],
-          ),
+          );
+
+    if (embedded) {
+      return SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+        child: innerContent,
+      );
+    }
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.88,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+      decoration: BoxDecoration(
+        color: bgSheet,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppTheme.sheetRadius),
+        ),
+        boxShadow: AppTheme.getSoftShadow(isDark),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: innerContent,
         ),
       ),
     );

@@ -13,7 +13,9 @@ import '../screens/pin_lock_screen.dart';
 import '../theme/app_theme.dart';
 
 class SecuritySheet extends StatelessWidget {
-  const SecuritySheet({super.key});
+  final bool embedded;
+
+  const SecuritySheet({super.key, this.embedded = false});
 
   static Future<void> show(BuildContext context) {
     HapticFeedback.lightImpact();
@@ -438,83 +440,69 @@ class SecuritySheet extends StatelessWidget {
         ? WriterTextFormatter.formatSpanishRelativeDate(notes.lastAutoBackupAt!)
         : 'Sin respaldo automático aún';
 
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.88,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: theme.surfaceCard,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(AppTheme.sheetRadius),
-        ),
-        boxShadow: AppTheme.getSoftShadow(isDark),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final innerContent = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!embedded) ...[
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.borderSubtle,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
             children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: theme.borderSubtle,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: theme.accentColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.shield_outlined,
+                  color: theme.accentColor,
+                  size: 21,
                 ),
               ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: theme.accentColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Seguridad y Respaldo',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: theme.textPrimary,
+                        letterSpacing: -0.4,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.shield_outlined,
-                      color: theme.accentColor,
-                      size: 21,
+                    const SizedBox(height: 2),
+                    Text(
+                      'Privacidad local, PIN de acceso y copias de seguridad',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.textSecondary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Seguridad y Respaldo',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: theme.textPrimary,
-                            letterSpacing: -0.4,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Privacidad local, PIN de acceso y copias de seguridad',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: theme.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
-              Divider(color: theme.borderSubtle, height: 1),
-              const SizedBox(height: 16),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Divider(color: theme.borderSubtle, height: 1),
+          const SizedBox(height: 16),
+        ],
 
-              // SECCIÓN 1: SEGURIDAD DE ACCESO
+        // SECCIÓN 1: SEGURIDAD DE ACCESO
               _sectionHeader(theme, 'SEGURIDAD Y PRIVACIDAD'),
               const SizedBox(height: 8),
               _buildCardGroup(
@@ -721,7 +709,33 @@ class SecuritySheet extends StatelessWidget {
               ),
               const SizedBox(height: 12),
             ],
-          ),
+          );
+
+    if (embedded) {
+      return SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+        child: innerContent,
+      );
+    }
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.88,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: theme.surfaceCard,
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppTheme.sheetRadius),
+        ),
+        boxShadow: AppTheme.getSoftShadow(isDark),
+      ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: innerContent,
         ),
       ),
     );
