@@ -353,7 +353,7 @@ class SecuritySheet extends StatelessWidget {
               _policyBullet(
                 theme,
                 'Almacenamiento 100% local',
-                'Todas tus notas, carpetas, bocetos, audios y configuraciones se guardan exclusivamente en la memoria interna de tu dispositivo.',
+                'Todas tus notas, carpetas, bocetos y configuraciones se guardan exclusivamente en la memoria interna de tu dispositivo.',
               ),
               const SizedBox(height: 12),
               _policyBullet(

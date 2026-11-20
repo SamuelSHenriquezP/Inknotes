@@ -1,5 +1,5 @@
 name: ink_notes
-description: "inkNotes - A fast, minimalist notes app with folders, multimedia attachments, voice memos, and canvas sketches."
+description: "inkNotes - A fast, minimalist notes app with folders, image attachments and canvas sketches."
 publish_to: 'none'
 version: 1.0.0+1
 

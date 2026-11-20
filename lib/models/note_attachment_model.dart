@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+// Audio is retained only to decode older backups; it has no editor or player.
 enum AttachmentType { image, audio, drawing }
 
 class NoteAttachmentModel {

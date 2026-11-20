@@ -12,7 +12,6 @@ import '../models/folder_model.dart';
 import '../models/note_attachment_model.dart';
 import '../formatters/writer_text_formatter.dart';
 import '../widgets/note_card.dart';
-import '../widgets/voice_memo_sheet.dart';
 import '../widgets/drawing_sheet.dart';
 import '../widgets/global_search_sheet.dart';
 import '../widgets/sort_filter_sheet.dart';
@@ -339,17 +338,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         },
       ),
     );
-  }
-
-  Future<void> _quickVoiceNote(
-    BuildContext context,
-    NotesController controller,
-    bool isDark,
-  ) async {
-    final attachment = await VoiceMemoSheet.show(context, isDark: isDark);
-    if (attachment != null && context.mounted) {
-      _createNote(context, controller, attachments: [attachment]);
-    }
   }
 
   Future<void> _quickDrawingNote(
@@ -752,7 +740,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         // Pequeños botones flotantes animados saliendo del '+'
         if (_isFabOpen || !_fabAnimController.isDismissed) ...[
           _buildSpeedDialItem(
-            index: 4,
+            index: 3,
             icon: Icons.image_outlined,
             label: 'Imagen',
             isDark: isDark,
@@ -761,22 +749,13 @@ class _DashboardScreenState extends State<DashboardScreen>
             onTap: () => _quickImageNote(context, controller),
           ),
           _buildSpeedDialItem(
-            index: 3,
+            index: 2,
             icon: Icons.gesture_rounded,
             label: 'Boceto a mano',
             isDark: isDark,
             textPrimary: textPrimary,
             borderSubtle: borderSubtle,
             onTap: () => _quickDrawingNote(context, controller, isDark),
-          ),
-          _buildSpeedDialItem(
-            index: 2,
-            icon: Icons.mic_none_rounded,
-            label: 'Nota de voz',
-            isDark: isDark,
-            textPrimary: textPrimary,
-            borderSubtle: borderSubtle,
-            onTap: () => _quickVoiceNote(context, controller, isDark),
           ),
           _buildSpeedDialItem(
             index: 1,

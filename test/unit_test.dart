@@ -429,7 +429,7 @@ void main() {
   });
 
   group('Security & Backup Tests', () {
-    test('Welcome note highlights match complete words including Graba and Resalta', () async {
+    test('Welcome note highlights match supported features', () async {
       SharedPreferences.setMockInitialValues({});
       final controller = NotesController();
       await Future.delayed(const Duration(milliseconds: 50));
@@ -440,8 +440,8 @@ void main() {
           .toList();
 
       expect(highlightedWords.contains('Resalta'), true);
-      expect(highlightedWords.contains('Graba'), true);
-      expect(highlightedWords.any((w) => w == 'Grab'), false);
+      expect(highlightedWords.contains('dibujos'), true);
+      expect(welcome.content, isNot(contains('Graba notas de voz')));
     });
 
     test('Manual export and import roundtrip restores notes and folders', () async {

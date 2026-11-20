@@ -16,8 +16,6 @@ import '../models/note_attachment_model.dart';
 import '../formatters/writer_text_formatter.dart';
 import '../formatters/highlighted_text_controller.dart';
 import '../widgets/drawing_sheet.dart';
-import '../widgets/voice_memo_sheet.dart';
-import '../widgets/audio_player_widget.dart';
 import '../widgets/theme_sheet.dart';
 import '../widgets/note_history_sheet.dart';
 import '../widgets/tag_manager_sheet.dart';
@@ -440,18 +438,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         });
       }
     } catch (_) {}
-  }
-
-  Future<void> _recordVoiceMemo(NotesController controller, bool isDark) async {
-    final attachment = await VoiceMemoSheet.show(context, isDark: isDark);
-    if (attachment != null && mounted) {
-      controller.addAttachment(widget.noteId, attachment);
-      setState(() {
-        _note = controller.notes
-            .where((n) => n.id == widget.noteId)
-            .firstOrNull;
-      });
-    }
   }
 
   Future<void> _openDrawingSheet(
@@ -1224,36 +1210,35 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                           const SizedBox(height: 8),
 
                           // Adjuntos Multimedia
-                          if (currentNote.attachments.isNotEmpty) ...[
-                            ...currentNote.attachments.map((att) {
-                              if (att.type == AttachmentType.audio) {
-                                return AudioPlayerWidget(
-                                  attachment: att,
-                                  isDark: isDark,
-                                  onDelete: () => notesController
-                                      .removeAttachment(currentNote.id, att.id),
-                                );
-                              } else if (att.type == AttachmentType.drawing) {
-                                return _buildDrawingCard(
-                                  att,
-                                  currentNote,
-                                  notesController,
-                                  isDark,
-                                  bgCard,
-                                  borderSubtle,
-                                );
-                              } else if (att.type == AttachmentType.image) {
-                                return _buildImageCard(
-                                  att,
-                                  currentNote,
-                                  notesController,
-                                  isDark,
-                                  bgCard,
-                                  borderSubtle,
-                                );
-                              }
-                              return const SizedBox();
-                            }),
+                          if (currentNote.attachments.any(
+                            (att) => att.type != AttachmentType.audio,
+                          )) ...[
+                            ...currentNote.attachments
+                                .where(
+                                  (att) => att.type != AttachmentType.audio,
+                                )
+                                .map((att) {
+                                  if (att.type == AttachmentType.drawing) {
+                                    return _buildDrawingCard(
+                                      att,
+                                      currentNote,
+                                      notesController,
+                                      isDark,
+                                      bgCard,
+                                      borderSubtle,
+                                    );
+                                  } else if (att.type == AttachmentType.image) {
+                                    return _buildImageCard(
+                                      att,
+                                      currentNote,
+                                      notesController,
+                                      isDark,
+                                      bgCard,
+                                      borderSubtle,
+                                    );
+                                  }
+                                  return const SizedBox();
+                                }),
                             const SizedBox(height: 12),
                           ],
 
@@ -1470,20 +1455,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                                         });
                                       },
                                     ),
-                                  // Nota de voz
-                                  IconButton(
-                                    icon: Icon(
-                                      Icons.mic_none_rounded,
-                                      size: 20,
-                                      color: textSecondary,
-                                    ),
-                                    tooltip: 'Grabar nota de voz',
-                                    visualDensity: VisualDensity.compact,
-                                    onPressed: () => _recordVoiceMemo(
-                                      notesController,
-                                      isDark,
-                                    ),
-                                  ),
                                   // Dibujo a mano
                                   IconButton(
                                     icon: Icon(

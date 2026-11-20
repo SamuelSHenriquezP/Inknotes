@@ -258,7 +258,17 @@ class NotesController extends ChangeNotifier {
             .toList();
 
         // Limpieza automática y reparación de resaltados en nota de bienvenida
-        bool needsSave = false;
+        final previousCount = _notes.length;
+        _notes.removeWhere(
+          (note) =>
+              note.id == 'note_voice' &&
+              note.title == 'Recordatorio rápido de voz 🎙️' &&
+              note.content ==
+                  'Audio con los pendientes de la semana y detalles importantes que no quiero olvidar.' &&
+              note.attachments.length == 1 &&
+              note.attachments.single.data == 'sample_audio_memo',
+        );
+        bool needsSave = previousCount != _notes.length;
         for (int i = 0; i < _notes.length; i++) {
           var n = _notes[i];
           if (n.content.contains('==') || n.content.contains('*')) {
@@ -273,16 +283,18 @@ class NotesController extends ChangeNotifier {
             _notes[i] = n;
             needsSave = true;
           }
-          if (n.id == 'note_welcome' &&
-              n.content.contains('Graba notas de voz')) {
-            final hasBrokenOffsets = n.highlights.any(
-              (h) =>
-                  (h.start == 75 && h.end == 82) ||
-                  (h.start == 117 && h.end == 122),
-            );
-            if (hasBrokenOffsets || n.highlights.isEmpty) {
+          if (n.id == 'note_welcome') {
+            const oldBullet =
+                '• Graba notas de voz directas con reproductor integrado.\n';
+            final updated = n.content.replaceFirst(oldBullet, '');
+            if (updated != n.content) {
               _notes[i] = n.copyWith(
-                highlights: _buildWelcomeHighlights(n.content),
+                content: updated,
+                highlights: updateHighlightsOnTextChange(
+                  oldText: n.content,
+                  newText: updated,
+                  highlights: n.highlights,
+                ),
               );
               needsSave = true;
             }
@@ -344,7 +356,6 @@ class NotesController extends ChangeNotifier {
     const welcomeContent =
         'Espacio minimalista y rápido diseñado para tomar notas sin distracciones.\n\n'
         '• Resalta fragmentos con tonos pasteles.\n'
-        '• Graba notas de voz directas con reproductor integrado.\n'
         '• Añade bocetos y dibujos a mano alzada.\n'
         '• Inserta imágenes en cualquier nota.';
 
@@ -358,26 +369,6 @@ class NotesController extends ChangeNotifier {
         highlights: _buildWelcomeHighlights(welcomeContent),
         createdAt: now.subtract(const Duration(hours: 1)),
         updatedAt: now.subtract(const Duration(minutes: 10)),
-      ),
-      NoteModel(
-        id: 'note_voice',
-        folderId: 'personal',
-        title: 'Recordatorio rápido de voz 🎙️',
-        content:
-            'Audio con los pendientes de la semana y detalles importantes que no quiero olvidar.',
-        isPinned: false,
-        attachments: [
-          NoteAttachmentModel(
-            id: 'sample_audio_1',
-            type: AttachmentType.audio,
-            data: 'sample_audio_memo',
-            name: 'Nota de voz (0:34)',
-            durationSeconds: 34,
-            createdAt: now.subtract(const Duration(hours: 3)),
-          ),
-        ],
-        createdAt: now.subtract(const Duration(hours: 3)),
-        updatedAt: now.subtract(const Duration(hours: 3)),
       ),
       NoteModel(
         id: 'note_ideas',
@@ -1005,7 +996,6 @@ class NotesController extends ChangeNotifier {
     final specs = <MapEntry<String, int>>[
       const MapEntry('Espacio minimalista y rápido diseñado', 0xFFFFE082),
       const MapEntry('Resalta', 0xFFA5D6A7),
-      const MapEntry('Graba', 0xFF90CAF9),
       const MapEntry('dibujos', 0xFFCE93D8),
       const MapEntry('imágenes', 0xFFFFCC80),
     ];

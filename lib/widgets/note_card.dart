@@ -55,7 +55,6 @@ class NoteCard extends StatelessWidget {
       note.updatedAt,
     );
 
-    final hasAudio = note.attachments.any((a) => a.type == AttachmentType.audio);
     final hasDrawing = note.attachments.any((a) => a.type == AttachmentType.drawing);
     final hasImage = note.attachments.any((a) => a.type == AttachmentType.image);
 
@@ -73,7 +72,6 @@ class NoteCard extends StatelessWidget {
             hidePreview: hidePreview,
             wordCount: wordCount,
             formattedDate: formattedDate,
-            hasAudio: hasAudio,
             hasDrawing: hasDrawing,
             hasImage: hasImage,
             context: context,
@@ -87,7 +85,6 @@ class NoteCard extends StatelessWidget {
             hidePreview: hidePreview,
             wordCount: wordCount,
             formattedDate: formattedDate,
-            hasAudio: hasAudio,
             hasDrawing: hasDrawing,
             hasImage: hasImage,
             context: context,
@@ -444,7 +441,6 @@ class NoteCard extends StatelessWidget {
     required bool hidePreview,
     required int wordCount,
     required String formattedDate,
-    required bool hasAudio,
     required bool hasDrawing,
     required bool hasImage,
     required BuildContext context,
@@ -550,10 +546,6 @@ class NoteCard extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (hasAudio) ...[
-                              Icon(Icons.mic_none_rounded, size: 12, color: textSecondary),
-                              const SizedBox(width: 3),
-                            ],
                             if (hasDrawing) ...[
                               Icon(Icons.gesture_rounded, size: 12, color: textSecondary),
                               const SizedBox(width: 3),
@@ -607,7 +599,6 @@ class NoteCard extends StatelessWidget {
     required bool hidePreview,
     required int wordCount,
     required String formattedDate,
-    required bool hasAudio,
     required bool hasDrawing,
     required bool hasImage,
     required BuildContext context,
@@ -693,10 +684,6 @@ class NoteCard extends StatelessWidget {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (hasAudio) ...[
-                          Icon(Icons.mic_none_rounded, size: 12, color: textSecondary),
-                          const SizedBox(width: 3),
-                        ],
                         if (hasDrawing) ...[
                           Icon(Icons.gesture_rounded, size: 12, color: textSecondary),
                           const SizedBox(width: 3),
